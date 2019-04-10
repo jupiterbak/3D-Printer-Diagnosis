@@ -159,7 +159,7 @@
 
             // Mouse and Raycaster
             raycaster = new THREE.Raycaster();
-            raycaster.linePrecision = 3;
+            raycaster.linePrecision = 0.1;
             mouse = new THREE.Vector2();
 
             // Highlight Object
@@ -287,6 +287,9 @@
 
             var segments = new THREE.Line(geometry, extruding ? (i < userData.step ? (i < params.Layers ? extrudingMaterialDone : extrudingMaterial2) : extrudingMaterial) : pathMaterial);
             segments.name = 'layer' + i;
+            segments.userData = {
+                index: i
+            }
             return segments;
         }
 
@@ -335,7 +338,50 @@
         function render() {
             if (mesh) {
                 renderer.render(scene, camera);
+                renderIntersect();
             }
+        }
+
+        var last_intersect;
+
+        function renderIntersect() {
+
+            // Update last colors
+            raycaster.setFromCamera(mouse, camera);
+            if (last_intersect) {
+                for (var i = 0; i < last_intersect.length; i++) {
+                    const logIndex = last_intersect[i].object.userData.index;
+                    var min = Math.min(userData.step, params.Layers);
+                    if (logIndex < min) {
+                        last_intersect[i].object.material.color.set(lut.getColor(userData.logs[logIndex].torque));
+                        last_intersect[i].object.material.opacity = 1.0;
+                        last_intersect[i].object.material.transparent = true;
+                    } else {
+                        if (logIndex < userData.step) {
+                            last_intersect[i].object.material.color.set('#009933');
+                            last_intersect[i].object.material.opacity = 0.1;
+                            last_intersect[i].object.material.transparent = true;
+                        } else {
+                            last_intersect[i].object.material.color.set(0x999999);
+                            last_intersect[i].object.material.opacity = 0.1;
+                            last_intersect[i].object.material.transparent = true;
+                        }
+                    }
+
+
+                }
+            }
+
+            // calculate objects intersecting the picking ray
+            var intersects = raycaster.intersectObjects(mesh.children);
+            if (intersects && intersects.length > 0) {
+                last_intersect = intersects;
+                intersects[0].object.material.color.set(0xff0000);
+                intersects[0].object.material.opacity = 1.0;
+                intersects[0].object.material.transparent = true;
+            }
+
+            renderer.render(scene, camera);
         }
     </script>
 
