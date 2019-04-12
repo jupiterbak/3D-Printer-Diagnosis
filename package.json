@@ -1,0 +1,24 @@
+{
+    "name": "3dvisualisation",
+    "version": "1.0.0",
+    "description": "",
+    "main": "app.js",
+    "scripts": {
+        "start": "node app.js"
+    },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/jupiterbak/3D-Printer-Diagnosis.git"
+    },
+    "dependencies": {
+        "express": "^4.16.4",
+        "gcode-toolpath": "^2.2.0",
+        "http": "0.0.0"
+    },
+    "author": "Jupiter Bakakeu",
+    "license": "ISC",
+    "bugs": {
+        "url": "https://github.com/jupiterbak/3D-Printer-Diagnosis/issues"
+    },
+    "homepage": "https://github.com/jupiterbak/3D-Printer-Diagnosis#readme"
+}

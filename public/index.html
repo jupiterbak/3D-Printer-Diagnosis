@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <title>3D-Printer Visualization</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+    <style>
+        body {
+            font-family: Monospace;
+            background-color: #000;
+            color: #fff;
+            margin: 0px;
+            overflow: hidden;
+        }
+        
+        #info {
+            color: #fff;
+            position: static;
+            top: 10px;
+            text-align: center;
+            display: block;
+        }
+        
+        #info a {
+            color: #046;
+            font-weight: bold;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="info"></div>
+
+    <script src="js/three.min.js"></script>
+    <script src="js/jquery-3.4.0.min.js"></script>
+
+
+    <script src="js/libs/inflate.min.js"></script>
+    <script src="js/loaders/GCodeLoader.js"></script>
+
+    <script src="js/controls/DragControls.js"></script>
+    <script src="js/controls/OrbitControls.js"></script>
+    <script src="js/controls/TransformControls.js"></script>
+    <script src="js/math/Lut.js"></script>
+
+
+    <script src="js/WebGL.js"></script>
+
+    <script src="js/libs/dat.gui.min.js"></script>
+    <script src="js/libs/stats.min.js"></script>
+
+    <script>
+        if (WEBGL.isWebGLAvailable() === false) {
+            document.body.appendChild(WEBGL.getWebGLErrorMessage());
+        }
+        var params = {
+            'CAD': true,
+            'Zoom': 1.0,
+            'Layers': 1000,
+            'Torque': '',
+            'Temperature': ''
+        };
+
+        var container, stats, controls;
+        var camera, scene, renderer, light;
+        var mesh;
+        var raycaster, mouse, INTERSECTED, sphereInter;
+        var splitLayer = true;
+        var gui = new dat.GUI();
+        var colormap_options = {
+            feature: 1
+        };
+        var features = {
+            Temperature: 0,
+            Torque: 1,
+            Torques: 2,
+            Torquew: 3,
+        };
+
+        var clock = new THREE.Clock();
+        var mixer;
+
+        var userData;
+        var lut;
+
+        var pathMaterial = new THREE.LineBasicMaterial({
+            color: 0xFF0000,
+            opacity: 0.1,
+            transparent: true
+        });
+        pathMaterial.name = 'path';
+
+        var extrudingMaterial = new THREE.LineBasicMaterial({
+            color: 0x999999,
+            transparent: true,
+            opacity: 0.1
+        });
+        extrudingMaterial.name = 'extruded';
+
+        var extrudingMaterial2 = new THREE.LineBasicMaterial({
+            color: '#009933',
+            transparent: true,
+            opacity: 0.1
+        });
+        extrudingMaterial2.name = 'extruded2';
+
+        // Initialize and animate 
+        init();
+        animate();
+
+        function init() {
+            // get the container
+            //container = document.createElement('div');
+            //document.body.appendChild(container);
+            container = document.getElementById('info');
+
+            // Create the scene
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0xf0f0f0);
+
+            // Camera
+            camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 1, 10000);
+            camera.position.set(0, 250, 200);
+            scene.add(camera);
+
+            // Lights
+            scene.add(new THREE.AmbientLight(0xf0f0f0));
+            var light = new THREE.SpotLight(0xffffff, 1.5);
+            light.position.set(0, 1500, 200);
+            light.castShadow = true;
+            light.shadow = new THREE.LightShadow(new THREE.PerspectiveCamera(70, 1, 200, 2000));
+            light.shadow.bias = -0.000222;
+            light.shadow.mapSize.width = 1024;
+            light.shadow.mapSize.height = 1024;
+            scene.add(light);
+
+            // Ground
+            var planeGeometry = new THREE.PlaneBufferGeometry(1000, 1000);
+            planeGeometry.rotateX(-Math.PI / 2);
+            var planeMaterial = new THREE.ShadowMaterial({
+                opacity: 0.2
+            });
+            var plane = new THREE.Mesh(planeGeometry, planeMaterial);
+            plane.position.y = -100;
+            plane.receiveShadow = true;
+            scene.add(plane);
+
+            var helper = new THREE.GridHelper(1000, 100);
+            helper.position.y = -99;
+            helper.material.opacity = 0.25;
+            helper.material.transparent = true;
+            scene.add(helper);
+
+            // Control
+            controls = new THREE.OrbitControls(camera);
+            //controls.target.set(0, 100, 0);
+            // controls.minDistance = 50;
+            // controls.maxDistance = 200;
+            controls.update();
+
+            // Mouse and Raycaster
+            raycaster = new THREE.Raycaster();
+            raycaster.linePrecision = 0.1;
+            mouse = new THREE.Vector2();
+
+            // Highlight Object
+            var _geometry = new THREE.SphereBufferGeometry(5);
+            var _material = new THREE.MeshBasicMaterial({
+                color: 0xff0000
+            });
+            sphereInter = new THREE.Mesh(_geometry, _material);
+            sphereInter.visible = false;
+            scene.add(sphereInter);
+
+            // Load GCode
+            var loader = new THREE.GCodeLoader(undefined);
+            loader.load('HeartBox_LidFont.gcode', function(layers) {
+                //object.position.set(-100, -100, 0);
+                //var center = points.geometry.boundingSphere.center;
+                //controls.target.set(center.x, center.y, center.z);
+                generateUserData(layers.length);
+
+                // Color LUT
+                lut = new THREE.Lut('blackbody', 10);
+                lut.setMax(userData.maxTorque);
+                lut.setMin(userData.minTorque);
+                renderGCode(layers);
+                buildGUI(layers.length)
+            });
+
+
+            // Renderer
+            renderer = new THREE.WebGLRenderer({
+                antialias: true
+            });
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            container.appendChild(renderer.domElement);
+
+            // Listeners
+            window.addEventListener('resize', onWindowResize, false);
+            document.addEventListener('mousemove', onDocumentMouseMove, false);
+
+            // stats
+            stats = new Stats();
+            container.appendChild(stats.dom);
+        }
+
+        function buildGUI(l) {
+            // GUI
+            params.Layers = l;
+            gui.add(params, 'CAD').name('Show full Object').onChange(function(val) {});
+
+            gui.add(params, 'Layers', 0, l).name("Layers").onChange(function(val) {
+                updateMeshColor();
+            });
+
+            gui.add(colormap_options, 'feature', features).name('Feature').onChange(function() {
+                //updateMeshColor();
+            });
+            gui.open();
+
+        }
+
+        function generateUserData(length) {
+            userData = {
+                step: 400,
+                maxTorque: 3800,
+                minTorque: 1800,
+                maxTemp: 125,
+                minTemp: 25,
+                logs: []
+            };
+
+            for (let index = 0; index < length; index++) {
+                var executed = index < userData.step;
+                userData.logs.push({
+                    executed: executed,
+                    temperature: executed ? Math.random() * 100 + 25 : 25,
+                    torque: executed ? Math.random() * 2000 + 1800 : 1800,
+                });
+            }
+        }
+
+        function updateMeshColor() {
+            if (mesh) {
+                // (i < userData.step ? (i < params.Layers ? extrudingMaterialDone : extrudingMaterial2) : extrudingMaterial) lut.getColor(userData.logs[i].torque)
+                for (let index = 0; index < mesh.children.length; index++) {
+                    const el = mesh.children[index];
+                    var min = Math.min(userData.step, params.Layers);
+                    if (index < min) {
+                        el.material.color.set(lut.getColor(userData.logs[index].torque));
+                        el.material.opacity = 1.0;
+                        el.material.transparent = true;
+                    } else {
+                        if (index < userData.step) {
+                            el.material.color.set('#009933');
+                            el.material.opacity = 0.1;
+                            el.material.transparent = true;
+                        } else {
+                            el.material.color.set(0x999999);
+                            el.material.opacity = 0.1;
+                            el.material.transparent = true;
+                        }
+                    }
+                }
+
+            }
+        }
+
+        function getObject(vertex, extruding, i) {
+            var geometry = new THREE.BufferGeometry();
+            geometry.addAttribute('position', new THREE.Float32BufferAttribute(vertex, 3));
+            geometry.computeBoundingSphere();
+
+            // Compute color from Torque
+            var _delta = userData.maxTorque - userData.minTorque;
+            var _c = Math.floor(((userData.logs[i].torque - userData.minTorque) / _delta) * 10);
+
+            var extrudingMaterialDone = new THREE.LineBasicMaterial({
+                color: lut.getColor(userData.logs[i].torque), // colorscale[_c],
+                linewidth: 5.0 // in pixels
+            });
+            extrudingMaterial.name = 'extrudedDone';
+
+            //geometry.center();
+
+            var segments = new THREE.Line(geometry, extruding ? (i < userData.step ? (i < params.Layers ? extrudingMaterialDone : extrudingMaterial2) : extrudingMaterial) : pathMaterial);
+            segments.name = 'layer' + i;
+            segments.userData = {
+                index: i
+            }
+            return segments;
+        }
+
+        function renderGCode(layers) {
+            var object = new THREE.Group();
+            object.name = 'gcode';
+            if (splitLayer) {
+
+                for (var i = 0; i < layers.length; i++) {
+                    var layer = layers[i];
+                    object.add(getObject(layer.vertex, true, i));
+                    var pathVertex = getObject(layer.pathVertex, false, i);
+                }
+
+            }
+            object.quaternion.setFromEuler(new THREE.Euler(-Math.PI / 2, 0, 0));
+            mesh = object;
+            new THREE.Box3().setFromObject(object).getCenter(object.position).multiplyScalar(-1);
+            scene.add(object);
+            updateMeshColor();
+        }
+
+        function onDocumentMouseMove(event) {
+            event.preventDefault();
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+        }
+
+        // On windows resized
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        // Animate
+        function animate() {
+            requestAnimationFrame(animate);
+            var delta = clock.getDelta();
+            if (mixer) mixer.update(delta);
+            render();
+            stats.update();
+        }
+
+        // Render
+        function render() {
+            if (mesh) {
+                renderer.render(scene, camera);
+                renderIntersect();
+            }
+        }
+
+        var last_intersect;
+
+        function renderIntersect() {
+
+            // Update last colors
+            raycaster.setFromCamera(mouse, camera);
+            if (last_intersect) {
+                for (var i = 0; i < last_intersect.length; i++) {
+                    const logIndex = last_intersect[i].object.userData.index;
+                    var min = Math.min(userData.step, params.Layers);
+                    if (logIndex < min) {
+                        last_intersect[i].object.material.color.set(lut.getColor(userData.logs[logIndex].torque));
+                        last_intersect[i].object.material.opacity = 1.0;
+                        last_intersect[i].object.material.transparent = true;
+                    } else {
+                        if (logIndex < userData.step) {
+                            last_intersect[i].object.material.color.set('#009933');
+                            last_intersect[i].object.material.opacity = 0.1;
+                            last_intersect[i].object.material.transparent = true;
+                        } else {
+                            last_intersect[i].object.material.color.set(0x999999);
+                            last_intersect[i].object.material.opacity = 0.1;
+                            last_intersect[i].object.material.transparent = true;
+                        }
+                    }
+
+
+                }
+            }
+
+            // calculate objects intersecting the picking ray
+            var intersects = raycaster.intersectObjects(mesh.children);
+            if (intersects && intersects.length > 0) {
+                last_intersect = intersects;
+                intersects[0].object.material.color.set(0xff0000);
+                intersects[0].object.material.opacity = 1.0;
+                intersects[0].object.material.transparent = true;
+            }
+
+            renderer.render(scene, camera);
+        }
+    </script>
+
+</body>
+
+</html>
