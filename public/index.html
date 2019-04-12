@@ -27,6 +27,7 @@
             font-weight: bold;
         }
     </style>
+    <link rel="stylesheet" href="css/fakeLoader.min.css">
 </head>
 
 <body>
@@ -34,7 +35,7 @@
 
     <script src="js/three.min.js"></script>
     <script src="js/jquery-3.4.0.min.js"></script>
-
+    <script src="js/fakeLoader.min.js"></script>
 
     <script src="js/libs/inflate.min.js"></script>
     <script src="js/loaders/GCodeLoader.js"></script>
@@ -54,7 +55,14 @@
         if (WEBGL.isWebGLAvailable() === false) {
             document.body.appendChild(WEBGL.getWebGLErrorMessage());
         }
+
+        // Add the spinner
+        $.fakeLoader({
+            bgColor: '#2ecc71',
+            spinner: "spinner1"
+        });
         var params = {
+            'message': "loading",
             'CAD': true,
             'Zoom': 1.0,
             'Layers': 1000,
@@ -104,6 +112,25 @@
             opacity: 0.1
         });
         extrudingMaterial2.name = 'extruded2';
+
+        // Initialize the loader
+        var manager = new THREE.LoadingManager();
+        manager.onStart = function(url, itemsLoaded, itemsTotal) {
+            params.message = "Loading... ";
+            console.log('Started loading file: ' + url + '.\nLoaded ' + itemsLoaded + ' of ' + itemsTotal + ' files.');
+        };
+
+        manager.onLoad = function() {
+            console.log('Loading complete!');
+            params.message = 'Loading complete!';
+        };
+        manager.onProgress = function(url, itemsLoaded, itemsTotal) {
+            console.log('Loading file: ' + url + '.\nLoaded ' + itemsLoaded + ' of ' + itemsTotal + ' files.');
+        };
+        manager.onError = function(url) {
+            console.log('There was an error loading ' + url);
+            params.message = "Error Loading: " + url;
+        };
 
         // Initialize and animate 
         init();
@@ -173,20 +200,26 @@
             sphereInter.visible = false;
             scene.add(sphereInter);
 
+            // Build the DAT GUI
+            buildDATGUI();
+
             // Load GCode
-            var loader = new THREE.GCodeLoader(undefined);
-            loader.load('HeartBox_LidFont.gcode', function(layers) {
+            var loader = new THREE.GCodeLoader(manager);
+            var _filename = 'HeartBox_LidFont.gcode';
+            loader.load(_filename, function(layers) {
                 //object.position.set(-100, -100, 0);
                 //var center = points.geometry.boundingSphere.center;
                 //controls.target.set(center.x, center.y, center.z);
-                generateUserData(layers.length);
+                getAllDataFromBackend(_filename, layers.length, function name(data) {
+                    userData = data;
+                    // Color LUT
+                    lut = new THREE.Lut('blackbody', 10);
+                    lut.setMax(data.maxTorque);
+                    lut.setMin(data.minTorque);
+                    renderGCode(layers);
+                    updateDATGUI(layers.length)
+                });
 
-                // Color LUT
-                lut = new THREE.Lut('blackbody', 10);
-                lut.setMax(userData.maxTorque);
-                lut.setMin(userData.minTorque);
-                renderGCode(layers);
-                buildGUI(layers.length)
             });
 
 
@@ -208,40 +241,41 @@
             container.appendChild(stats.dom);
         }
 
-        function buildGUI(l) {
+        function buildDATGUI() {
+            if (gui) {
+                gui.add(params, 'message').name('Status').listen();
+
+                gui.open();
+            }
+        }
+
+        function updateDATGUI(l) {
             // GUI
-            params.Layers = l;
-            gui.add(params, 'CAD').name('Show full Object').onChange(function(val) {});
+
+            gui.add(params, 'CAD').name('Show full Object').onChange(function(val) {
+
+            }).listen();
 
             gui.add(params, 'Layers', 0, l).name("Layers").onChange(function(val) {
                 updateMeshColor();
-            });
+            }).listen();
 
             gui.add(colormap_options, 'feature', features).name('Feature').onChange(function() {
                 //updateMeshColor();
             });
             gui.open();
-
+            params.Layers = l;
         }
 
-        function generateUserData(length) {
-            userData = {
-                step: 400,
-                maxTorque: 3800,
-                minTorque: 1800,
-                maxTemp: 125,
-                minTemp: 25,
-                logs: []
-            };
-
-            for (let index = 0; index < length; index++) {
-                var executed = index < userData.step;
-                userData.logs.push({
-                    executed: executed,
-                    temperature: executed ? Math.random() * 100 + 25 : 25,
-                    torque: executed ? Math.random() * 2000 + 1800 : 1800,
+        function getAllDataFromBackend(filename, length, callback) {
+            $.getJSON("/GetAllData", {
+                    filename: filename,
+                    length: length
+                })
+                .done(function(data) {
+                    userData = data;
+                    callback(data);
                 });
-            }
         }
 
         function updateMeshColor() {

@@ -59,8 +59,30 @@ app.get('/CAD', function(req, res, next) {
 
 });
 
-app.get('/Data', function(req, res, next) {
+app.get('/GetAllData', function(req, res, next) {
+    log("--> /GetAllData");
+    const _length = req.query['length'];
+    const filename = req.query['filename'];
+    var _userData = {
+        step: 400,
+        maxTorque: 3800,
+        minTorque: 1800,
+        maxTemp: 125,
+        minTemp: 25,
+        logs: []
+    };
 
+    // TODO: Get Data from Mongo DB
+    for (let index = 0; index < _length; index++) {
+        var executed = index < _userData.step;
+        _userData.logs.push({
+            executed: executed,
+            temperature: executed ? Math.random() * 100 + 25 : 25,
+            torque: executed ? Math.random() * 2000 + 1800 : 1800,
+        });
+    }
+
+    res.send(JSON.stringify(_userData));
 });
 
 server.listen(5500, function(params) {

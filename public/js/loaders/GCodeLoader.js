@@ -17,13 +17,19 @@ THREE.GCodeLoader = function(manager) {
 THREE.GCodeLoader.prototype.load = function(filename, onLoad, onProgress, onError) {
 
     var self = this;
-    self.setPath(filename);
+    var url = self.manager.resolveURL("/CAD" + filename);
 
+    self.setPath(filename);
+    self.manager.itemStart(url);
     $.getJSON("/CAD", {
             filename: filename
         })
         .done(function(data) {
             onLoad(self.loadData(data));
+        }).fail(function() {
+            self.manager.itemError(url);
+        }).always(function() {
+            self.manager.itemEnd(url);
         });
 };
 
@@ -89,28 +95,9 @@ THREE.GCodeLoader.prototype.loadData = function(data) {
     var lines = data;
 
     for (var i = 0; i < lines.length; i++) {
-
-        // var tokens = lines[i].split(' ');
-        // var cmd = tokens[0].toUpperCase();
-
-        // //Argumments
-        // var args = {};
-        // tokens.splice(1).forEach(function(token) {
-
-        //     if (token[0] !== undefined) {
-
-        //         var key = token[0].toLowerCase();
-        //         var value = parseFloat(token.substring(1));
-        //         args[key] = value;
-
-        //     }
-
-        // });
         var _line = lines[i];
         var _type = _line.type;
         var _motion = _line.motion;
-        //Process the data commands
-        // Linear Movement
 
         //Process the data commands
         //G0/G1 – Linear Movement
