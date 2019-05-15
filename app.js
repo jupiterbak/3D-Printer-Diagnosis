@@ -5,6 +5,7 @@ var express = require('express');
 var app = express();
 var server = require('http').createServer(app);
 var log = function(text) { console.log("[" + new Date().toISOString() + "] " + text.toString()); };
+var tmpCAD = {};
 
 // Configure Express
 app.use(express.static(__dirname + '/public'));
@@ -42,17 +43,25 @@ app.get('/CAD', function(req, res, next) {
     const filename = req.query['filename'];
 
     if (filename) {
-        toolpaths = [];
-        // Load G-code from file
-        const file = __dirname + '/public/models/gcode/' + filename;
-        toolpath.loadFromFile(file, function(err, data) {
-            // Send the error or the gcode as an array
-            if (err) {
-                res.send("[]");
-            } else {
-                res.send(JSON.stringify(toolpaths));
-            }
-        });
+        // Check if cad exist in the tmp variable
+        if (tmpCAD[filename]) {
+            res.send(JSON.stringify(tmpCAD[filename]));
+        } else {
+            // fetch it from the file system
+            toolpaths = [];
+            // Load G-code from file
+            const file = __dirname + '/public/models/gcode/' + filename;
+            toolpath.loadFromFile(file, function(err, data) {
+                // Send the error or the gcode as an array
+                if (err) {
+                    res.send("[]");
+                } else {
+                    tmpCAD[filename] = toolpaths;
+                    res.send(JSON.stringify(toolpaths));
+                }
+            });
+        }
+
     } else {
         res.sendStatus(404);
     }
