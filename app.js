@@ -58,6 +58,7 @@ app.get('/CAD', function(req, res, next) {
                 } else {
                     tmpCAD[filename] = toolpaths;
                     res.send(JSON.stringify(toolpaths));
+                    //console.log(JSON.stringify(toolpaths));
                 }
             });
         }
